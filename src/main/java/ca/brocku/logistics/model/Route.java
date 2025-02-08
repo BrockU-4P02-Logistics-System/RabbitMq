@@ -1,19 +1,15 @@
 package ca.brocku.logistics.model;
 
-import ca.brocku.logistics.api.Filters;
+import java.util.List;
 
-import java.util.Collection;
-import java.util.Date;
-import java.util.Set;
+public class Route {
+    private List<GeoJsonFeature> features;
 
-/**
- * Route Record
- * Contains all information for vehicle(s) and required route(s)
- * Including filter options for specific routes
- *
- * @param vehicles {@link Vehicle}
- * @param addresses {@link Address}
- * @param departureTime
- * @param filters {@link Filters}
- */
-public record Route(Collection<Vehicle> vehicles, Collection<Address> addresses, Date departureTime, Set<Filters> filters) {}
+    public Route(List<GeoJsonFeature> features) {
+        this.features = features;
+    }
+
+    public List<GeoJsonFeature> getFeatures() {
+        return features;
+    }
+}
