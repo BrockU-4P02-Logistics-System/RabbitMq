@@ -1,15 +1,14 @@
 package ca.brocku.logistics;
 
 import ca.brocku.logistics.model.GeoJsonFeature;
-import ca.brocku.logistics.model.Route;
+import ca.brocku.logistics.model.MessageRequest;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.rabbitmq.client.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.GeneticAlgorithm2;
-import org.example.Location;
+import org.example.*;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -18,9 +17,7 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeoutException;
 
 public class LogisticsApplication implements Closeable {
@@ -30,6 +27,7 @@ public class LogisticsApplication implements Closeable {
 
     private final Connection connection;
     private final Channel channel;
+    private final EntryPoint entryPoint = new EntryPoint();
 
     public LogisticsApplication(String host) throws IOException, TimeoutException, URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
         ConnectionFactory factory = new ConnectionFactory();
@@ -39,7 +37,7 @@ public class LogisticsApplication implements Closeable {
 
         channel.queueDeclare(QUEUE, true, false, false, null);
         channel.basicQos(1);
-        logger.info("Connected to RabbitMQ at host: {}", host);
+        System.out.println("Connected to RabbitMQ at host: " + host);
 
         setupConsumer();
     }
@@ -50,47 +48,99 @@ public class LogisticsApplication implements Closeable {
                 processMessage(delivery);
             } catch (Exception e) {
                 logger.error("Error processing message: {}", e.getMessage(), e);
-                channel.basicNack(delivery.getEnvelope().getDeliveryTag(), false, true);
+                // If the error is non-transient, acknowledge the message to avoid requeueing it
+                channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
             }
         };
-
         channel.basicConsume(QUEUE, false, deliverCallback, consumerTag ->
-                logger.info("Consumer {} cancelled", consumerTag));
+                System.out.println("Consumer " + consumerTag + " cancelled"));
     }
+
+
 
     private void processMessage(Delivery delivery) throws IOException {
-        String content = new String(delivery.getBody(), StandardCharsets.UTF_8);
-        AMQP.BasicProperties properties = delivery.getProperties();
+    String content = new String(delivery.getBody(), StandardCharsets.UTF_8);
+    AMQP.BasicProperties properties = delivery.getProperties();
 
-        logger.info("Processing message: {}", content);
+    System.out.println("Processing message: " + content);
 
-        Type listType = new TypeToken<List<GeoJsonFeature>>(){}.getType();
-        List<GeoJsonFeature> features = GSON.fromJson(content, listType);
+    // Parse the message as a JSON object
+    Type messageType = new TypeToken<MessageRequest>(){}.getType();
+    MessageRequest request = GSON.fromJson(content, messageType);
 
-        List<Location> locations = convertFeaturesToLocations(features);
-        GeneticAlgorithm2 ga = new GeneticAlgorithm2(1000, 0.75, 0.2, 3,
-                features.size() * features.size(), 42, locations);
+    List<GeoJsonFeature> features = request.getFeatures();
+    int numberDrivers = request.getNumberDrivers();
+    boolean returnToStart = request.isReturnToStart();
 
-        List<GeoJsonFeature> optimizedRoute = convertLocationsToGeoJson(ga.mainLoop().getRoute());
-        String response = GSON.toJson(optimizedRoute);
+    System.out.println("Number of drivers: " + numberDrivers + " Return to start: " + returnToStart);
 
-        AMQP.BasicProperties replyProps = new AMQP.BasicProperties.Builder()
-                .correlationId(properties.getCorrelationId())
-                .build();
+    // Convert features to locations
+    List<Location> locations = convertFeaturesToLocations(features);
 
-        channel.basicPublish("", properties.getReplyTo(), replyProps,
-                response.getBytes(StandardCharsets.UTF_8));
-        channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
+    // Configure the router
+    boolean[] options = {false, false, false};
 
-        logger.info("Route optimization completed and response sent");
+    // Solve the routing problem
+    Route route = entryPoint.spawnWorker(locations, options, numberDrivers, returnToStart);
+
+    // Create a list to store all routes for all drivers
+    List<List<GeoJsonFeature>> allDriverRoutes = new ArrayList<>();
+
+    // Process each driver's route
+    for (int i = 0; i < route.getFinalMultiRoute().size(); i++) {
+        final List<Location> driverStops = route.getFinalMultiRoute().get(i);
+        // Convert this driver's route to GeoJSON
+        List<GeoJsonFeature> driverRoute = convertLocationsToGeoJson(driverStops, i);
+        allDriverRoutes.add(driverRoute);
     }
+
+    // Create the final response with all driver routes
+    Map<String, Object> responseMap = new HashMap<>();
+    responseMap.put("route", allDriverRoutes);
+    String response = GSON.toJson(responseMap);
+
+    // Send the response
+    AMQP.BasicProperties replyProps = new AMQP.BasicProperties.Builder()
+            .correlationId(properties.getCorrelationId())
+            .build();
+
+    channel.basicPublish("", properties.getReplyTo(), replyProps,
+            response.getBytes(StandardCharsets.UTF_8));
+    channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
+
+    logger.info("Route optimization completed and response sent for " + numberDrivers + " drivers");
+}
+
+// Updated to include driver ID in the properties
+private List<GeoJsonFeature> convertLocationsToGeoJson(List<Location> locations, int driverId) {
+    List<GeoJsonFeature> features = new ArrayList<>();
+    for (int i = 0; i < locations.size(); i++) {
+        Location location = locations.get(i);
+        GeoJsonFeature feature = new GeoJsonFeature();
+        feature.setType("Feature");
+
+        GeoJsonFeature.Geometry geometry = new GeoJsonFeature.Geometry();
+        geometry.setType("Point");
+        geometry.setCoordinates(Arrays.asList(location.getLon(), location.getLat()));
+        feature.setGeometry(geometry);
+
+        GeoJsonFeature.Properties properties = new GeoJsonFeature.Properties();
+        properties.setOrder(i+1); // Sequential order within this driver's route
+        properties.setAddress("Location " + location.getID());
+        properties.setDriverId(driverId); // Add driver ID to properties
+        feature.setProperties(properties);
+
+        features.add(feature);
+    }
+    return features;
+}
 
     private List<Location> convertFeaturesToLocations(List<GeoJsonFeature> features) {
         List<Location> locations = new ArrayList<>();
         for (int i = 0; i < features.size(); i++) {
             GeoJsonFeature feature = features.get(i);
             List<Double> coords = feature.getGeometry().getCoordinates();
-            locations.add(new Location(coords.get(1), coords.get(0), i));
+            locations.add(new Location(coords.get(1), coords.get(0), i+1));
         }
         return locations;
     }

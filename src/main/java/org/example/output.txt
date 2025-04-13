@@ -1,0 +1,47 @@
+{
+    "features": [
+        {
+            "geometry": {
+                "coordinates": [
+                    -79.46838900000002,
+                    43.1775986
+                ],
+                "type": "Point"
+            },
+            "type": "Feature",
+            "properties": {
+                "Driver-ID": 0,
+                "ID": 1
+            }
+        },
+        {
+            "geometry": {
+                "coordinates": [
+                    -71.06059189999999,
+                    42.3737046
+                ],
+                "type": "Point"
+            },
+            "type": "Feature",
+            "properties": {
+                "Driver-ID": 0,
+                "ID": 2
+            }
+        },
+        {
+            "geometry": {
+                "coordinates": [
+                    -99.133208,
+                    19.4326077
+                ],
+                "type": "Point"
+            },
+            "type": "Feature",
+            "properties": {
+                "Driver-ID": 0,
+                "ID": 3
+            }
+        }
+    ],
+    "type": "FeatureCollection"
+}

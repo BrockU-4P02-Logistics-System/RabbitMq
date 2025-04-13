@@ -7,7 +7,9 @@ public class GeoJsonFeature {
     private Geometry geometry;
     private Properties properties;
 
-    public GeoJsonFeature() {}
+    public GeoJsonFeature() {
+    }
+
     public GeoJsonFeature(String type, Geometry geometry, Properties properties) {
         this.type = type;
         this.geometry = geometry;
@@ -42,7 +44,9 @@ public class GeoJsonFeature {
         private String type;
         private List<Double> coordinates;
 
-        public Geometry() {}
+        public Geometry() {
+        }
+
         public Geometry(String type, List<Double> coordinates) {
             this.type = type;
             this.coordinates = coordinates;
@@ -65,13 +69,21 @@ public class GeoJsonFeature {
         }
     }
 
+    // Add this to your GeoJsonFeature.Properties class
     public static class Properties {
-        private String address;
         private int order;
+        private String address;
+        private int driverId; // New field for driver ID
+        private String note;
+        private String arrivalTime;
+        private String departureTime;
 
-        public Properties() {}
-        public Properties(String address, int order) {
-            this.address = address;
+        // Getters and setters
+        public int getOrder() {
+            return order;
+        }
+
+        public void setOrder(int order) {
             this.order = order;
         }
 
@@ -83,12 +95,36 @@ public class GeoJsonFeature {
             this.address = address;
         }
 
-        public int getOrder() {
-            return order;
+        public int getDriverId() {
+            return driverId;
         }
 
-        public void setOrder(int order) {
-            this.order = order;
+        public void setDriverId(int driverId) {
+            this.driverId = driverId;
+        }
+
+        public String getNote() {
+            return note;
+        }
+
+        public void setNote(String note) {
+            this.note = note;
+        }
+
+        public String getArrivalTime() {
+            return arrivalTime;
+        }
+
+        public void setArrivalTime(String arrivalTime) {
+            this.arrivalTime = arrivalTime;
+        }
+
+        public String getDepartureTime() {
+            return departureTime;
+        }
+
+        public void setDepartureTime(String departureTime) {
+            this.departureTime = departureTime;
         }
     }
 }
